@@ -213,3 +213,53 @@ uint16_t ip_checksum(void* vdata, size_t size)
     // Return the checksum in network byte order.
     return htons(~acc);
 }
+
+int read_rtable(const char *path, struct route_table_entry *rtable)
+{
+	FILE *fp = fopen(path, "r");
+	int j = 0, i;
+	char *p, line[64];
+
+	while (fgets(line, sizeof(line), fp) != NULL) {
+		p = strtok(line, " .");
+		i = 0;
+		while (p != NULL) {
+			if (i < 4)
+				*(((unsigned char *)&rtable[j].prefix)  + i % 4) = (unsigned char)atoi(p);
+
+			if (i >= 4 && i < 8)
+				*(((unsigned char *)&rtable[j].next_hop)  + i % 4) = atoi(p);
+
+			if (i >= 8 && i < 12)
+				*(((unsigned char *)&rtable[j].mask)  + i % 4) = atoi(p);
+
+			if (i == 12)
+				rtable[j].interface = atoi(p);
+			p = strtok(NULL, " .");
+			i++;
+		}
+		j++;
+	}
+	return j;
+}
+
+int parse_arp_table(char *path, struct arp_entry *arp_table)
+{
+    FILE *f;
+    fprintf(stderr, "Parsing ARP table\n");
+    f = fopen(path, "r");
+    DIE(f == NULL, "Failed to open arp_table.txt");
+    char line[100];
+    int i = 0;
+    for(i = 0; fgets(line, sizeof(line), f); i++) {
+        char ip_str[50], mac_str[50];
+        sscanf(line, "%s %s", ip_str, mac_str);
+        fprintf(stderr, "IP: %s MAC: %s\n", ip_str, mac_str);
+        arp_table[i].ip = inet_addr(ip_str);
+        int rc = hwaddr_aton(mac_str, arp_table[i].mac);
+        DIE(rc < 0, "invalid MAC");
+    }
+    fclose(f);
+    fprintf(stderr, "Done parsing ARP table.\n");
+    return i;
+}

@@ -60,6 +60,20 @@ struct arp_header {
 	uint32_t tpa;   /* Target IP address */
 } __attribute__((packed));
 
+/* Route table entry */
+struct route_table_entry {
+	uint32_t prefix;
+	uint32_t next_hop;
+	uint32_t mask;
+	int interface;
+} __attribute__((packed));
+
+/* ARP table entry when skipping the ARP exercise */
+struct arp_entry {
+    __u32 ip;
+    uint8_t mac[6];
+};
+
 extern int interfaces[ROUTER_NUM_INTERFACES];
 
 /**
@@ -128,3 +142,15 @@ uint16_t ip_checksum(void* vdata, size_t size);
  * Returns: 0 on success, -1 on failure (e.g., string not a MAC address)    
  */ 
 int hwaddr_aton(const char *txt, uint8_t *addr);
+
+/* Populates a route table from file, rtable should be allocated 
+ * e.g. rtable = malloc(sizeof(struct route_table_entry) * 80000);
+ * This function returns the size of the route table.
+ */
+int read_rtable(const char *path, struct route_table_entry *rtable);
+
+/* Parses a static mac table from path and populates arp_table.
+ * arp_table should be allocated and have enough space. This
+ * function returns the size of the arp table.
+ * */
+int parse_arp_table(char *path, struct arp_entry *arp_table);
