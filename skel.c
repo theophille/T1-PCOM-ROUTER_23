@@ -144,74 +144,72 @@ void init(int argc, char *argv[])
 }
 
 
-uint16_t icmp_checksum(uint16_t *buffer, size_t size)
+uint16_t icmp_checksum(uint16_t *data, size_t size)
 {
-    unsigned long cksum = 0;
-    while(size >1) {
-        cksum += *buffer++;
-        size -= sizeof(unsigned short);
-    }
-    if (size)
-        cksum += *(unsigned short*)buffer;
+	unsigned long cksum = 0;
+	while(size >1) {
+		cksum += *data++;
+		size -= sizeof(unsigned short);
+	}
+	if (size)
+		cksum += *(unsigned short*)data;
 
-    cksum = (cksum >> 16) + (cksum & 0xffff);
-    cksum += (cksum >>16);
-    return (uint16_t)(~cksum);
+	cksum = (cksum >> 16) + (cksum & 0xffff);
+	cksum += (cksum >>16);
+	return (uint16_t)(~cksum);
 }
 
 
-uint16_t ip_checksum(void* vdata, size_t size)
+uint16_t ip_checksum(uint8_t *data, size_t size)
 {
-    // Cast the data pointer to one that can be indexed.
-    char* data = (char*)vdata;
+	// Initialise the accumulator.
+	uint64_t acc = 0xffff;
 
-    // Initialise the accumulator.
-    uint64_t acc = 0xffff;
+	// Handle any partial block at the start of the data.
+	unsigned int offset = ((uintptr_t)data) &3;
+	if (offset) {
+		size_t count = 4 - offset;
+		if (count > size)
+			count = size;
+		uint32_t word = 0;
+		memcpy(offset + (char *)&word, data, count);
+		acc += ntohl(word);
+		data += count;
+		size -= count;
+	}
 
-    // Handle any partial block at the start of the data.
-    unsigned int offset = ((uintptr_t)data)&3;
-    if (offset) {
-      size_t count = 4 - offset;
-      if (count > size)
-        count = size;
-      uint32_t word = 0;
-      memcpy(offset + (char *)&word, data, count);
-      acc += ntohl(word);
-      data += count;
-      size -= count;
-    }
+	// Handle any complete 32-bit blocks.
+	char* data_end = data + (size & ~3);
+	while (data!=data_end) {
+		uint32_t word;
+		memcpy(&word, data, 4);
+		acc += ntohl(word);
+		data += 4;
+	}
 
-    // Handle any complete 32-bit blocks.
-    char* data_end=data+(size&~3);
-    while (data!=data_end) {
-        uint32_t word;
-        memcpy(&word,data,4);
-        acc+=ntohl(word);
-        data+=4;
-    }
-    size&=3;
+	size &= 3;
 
-    // Handle any partial block at the end of the data.
-    if (size) {
-        uint32_t word=0;
-        memcpy(&word,data,size);
-        acc+=ntohl(word);
-    }
+	// Handle any partial block at the end of the data.
+	if (size) {
+		uint32_t word = 0;
+		memcpy(&word, data, size);
+		acc += ntohl(word);
+	}
 
-    // Handle deferred carries.
-    acc = (acc & 0xffffffff) + (acc >> 32);
-    while (acc >> 16) {
-      acc = (acc & 0xffff) + (acc >> 16);
-    }
+	// Handle deferred carries.
+	acc = (acc & 0xffffffff) + (acc >> 32);
+	while (acc >> 16) {
+		acc = (acc & 0xffff) + (acc >> 16);
+	}
 
-    // If the data began at an odd byte address
-    // then reverse the byte order to compensate.
-    if (offset & 1) {
-      acc = ((acc & 0xff00) >> 8) | ((acc & 0x00ff) << 8);
-    }
+	// If the data began at an odd byte address
+	// then reverse the byte order to compensate.
+	if (offset & 1) {
+		acc = ((acc & 0xff00) >> 8) | ((acc & 0x00ff) << 8);
+	}
 
-    // Return the checksum in network byte order.
-    return htons(~acc);
+	// Return the checksum in network byte order.
+	return htons(~acc);
 }
 
 int read_rtable(const char *path, struct route_table_entry *rtable)
@@ -245,21 +243,21 @@ int read_rtable(const char *path, struct route_table_entry *rtable)
 
 int parse_arp_table(char *path, struct arp_entry *arp_table)
 {
-    FILE *f;
-    fprintf(stderr, "Parsing ARP table\n");
-    f = fopen(path, "r");
-    DIE(f == NULL, "Failed to open arp_table.txt");
-    char line[100];
-    int i = 0;
-    for(i = 0; fgets(line, sizeof(line), f); i++) {
-        char ip_str[50], mac_str[50];
-        sscanf(line, "%s %s", ip_str, mac_str);
-        fprintf(stderr, "IP: %s MAC: %s\n", ip_str, mac_str);
-        arp_table[i].ip = inet_addr(ip_str);
-        int rc = hwaddr_aton(mac_str, arp_table[i].mac);
-        DIE(rc < 0, "invalid MAC");
-    }
-    fclose(f);
-    fprintf(stderr, "Done parsing ARP table.\n");
-    return i;
+	FILE *f;
+	fprintf(stderr, "Parsing ARP table\n");
+	f = fopen(path, "r");
+	DIE(f == NULL, "Failed to open arp_table.txt");
+	char line[100];
+	int i = 0;
+	for(i = 0; fgets(line, sizeof(line), f); i++) {
+		char ip_str[50], mac_str[50];
+		sscanf(line, "%s %s", ip_str, mac_str);
+		fprintf(stderr, "IP: %s MAC: %s\n", ip_str, mac_str);
+		arp_table[i].ip = inet_addr(ip_str);
+		int rc = hwaddr_aton(mac_str, arp_table[i].mac);
+		DIE(rc < 0, "invalid MAC");
+	}
+	fclose(f);
+	fprintf(stderr, "Done parsing ARP table.\n");
+	return i;
 }
