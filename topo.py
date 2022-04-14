@@ -336,7 +336,7 @@ if __name__ == "__main__":
         assert(len(sys.argv) > 2), "Usage: python3 topo.py run <testname>"
         testname = sys.argv[2]
         assert(testname in tests.TESTS.keys()), "Unknown test name!"
-        main(testname=testname)
+        main(run=testname)
     else:
         setLogLevel("info")
         main()
