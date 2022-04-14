@@ -289,7 +289,7 @@ def should_skip(testname):
     return False
 
 
-def main(run_tests=False):
+def main(run_tests=False, run=None):
     topo = FullTopo(nr=info.N_ROUTERS, nh=info.N_HOSTSEACH)
 
     net = Mininet(topo)
@@ -299,8 +299,8 @@ def main(run_tests=False):
 
     nm.setup()
 
-    print("{:=^80}\n".format(" Running tests "))
     if run_tests:
+        print("{:=^80}\n".format(" Running tests "))
         for testname in tests.TESTS:
             skipped = False
 
@@ -315,7 +315,10 @@ def main(run_tests=False):
                 str_status = "SKIPPED"
             print("{: >20} {:.>50} {: >8}".format(testname, "", str_status))
             time.sleep(info.TIMEOUT / 2)
-
+    if run is not None:
+        print("{:=^80}\n".format(f" Running test \"{run}\" "))
+        results = nm.run_test(run)
+        passed = validate_test_results(results)
     else:
         net.startTerms()
         signal.signal(signal.SIGINT, signal_handler)
@@ -329,6 +332,11 @@ if __name__ == "__main__":
     # Tell mininet to print useful information
     if len(sys.argv) > 1 and sys.argv[1] == "tests":
         main(run_tests=True)
+    elif len(sys.argv) > 1 and sys.argv[1] == "run":
+        assert(len(sys.argv) > 2), "Usage: python3 topo.py run <testname>"
+        testname = sys.argv[2]
+        assert(testname in tests.TESTS.keys()), "Unknown test name!"
+        main(testname=testname)
     else:
         setLogLevel("info")
         main()
