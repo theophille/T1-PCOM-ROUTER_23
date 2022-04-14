@@ -315,7 +315,7 @@ def main(run_tests=False, run=None):
                 str_status = "SKIPPED"
             print("{: >20} {:.>50} {: >8}".format(testname, "", str_status))
             time.sleep(info.TIMEOUT / 2)
-    if run is not None:
+    elif run is not None:
         print("{:=^80}\n".format(f" Running test \"{run}\" "))
         results = nm.run_test(run)
         passed = validate_test_results(results)
