@@ -1,14 +1,14 @@
 PROJECT=router
-SOURCES=router.c queue.c list.c skel.c
+SOURCES=router.c lib/queue.c lib/list.c lib/lib.c
 LIBRARY=nope
 INCPATHS=include
 LIBPATHS=.
 LDFLAGS=
-CFLAGS=-c -Wall
+CFLAGS=-c -Wall -Werror -Wno-error=unused-variable
 CC=gcc
 
 # Automatic generation of some important lists
-OBJECTS=$(SOURCES:.c=.o)
+OBJECTS=$(SOURCES:.c=.o) router
 INCFLAGS=$(foreach TMP,$(INCPATHS),-I$(TMP))
 LIBFLAGS=$(foreach TMP,$(LIBPATHS),-L$(TMP))
 

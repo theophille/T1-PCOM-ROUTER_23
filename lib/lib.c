@@ -1,4 +1,22 @@
-#include "skel.h"
+#include "lib.h"
+
+#include <sys/ioctl.h>
+#include <net/if.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <linux/if_packet.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <net/if.h>
+#include <unistd.h>
+#include <asm/byteorder.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 
 int interfaces[ROUTER_NUM_INTERFACES];
 
@@ -22,31 +40,32 @@ int get_sock(const char *if_name) {
 	return s;
 }
 
-packet* socket_receive_message(int sockfd, packet *m)
+int socket_receive_message(int sockfd, char *buf, int *len)
 {
 	/*
 	 * Note that "buffer" should be at least the MTU size of the
 	 * interface, eg 1500 bytes
 	 * */
-	m->len = read(sockfd, m->payload, MAX_LEN);
-	DIE(m->len == -1, "read");
-	return m;
+	*len = read(sockfd, buf, MAX_PACKET_LEN);
+	DIE(*len == -1, "read");
+	return 0;
 }
 
-int send_packet(packet *m)
-{
-	/*
-	 * Note that "buffer" should be at least the MTU size of the
-	 * interface, eg 1500 bytes
+
+
+int send_to_link(int sockfd, char *buf, int len)
+{        
+	/* 
+	 * Note that "buffer" should be at least the MTU size of the 
+	 * interface, eg 1500 bytes 
 	 * */
 	int ret;
-	ret = write(interfaces[m->interface], m->payload, m->len);
+	ret = write(interfaces[sockfd], buf, len);
 	DIE(ret == -1, "write");
 	return ret;
 }
 
-int get_packet(packet *m)
-{
+int recv_from_any_link(char * buf, int *len) {
 	int res;
 	fd_set set;
 
@@ -56,15 +75,13 @@ int get_packet(packet *m)
 			FD_SET(interfaces[i], &set);
 		}
 
-		res = select(interfaces[ROUTER_NUM_INTERFACES - 1] + 1, &set,
-				NULL, NULL, NULL);
+		res = select(interfaces[ROUTER_NUM_INTERFACES - 1] + 1, &set, NULL, NULL, NULL);
 		DIE(res == -1, "select");
 
 		for (int i = 0; i < ROUTER_NUM_INTERFACES; i++) {
 			if (FD_ISSET(interfaces[i], &set)) {
-				socket_receive_message(interfaces[i], m);
-				m->interface = i;
-				return 0;
+				socket_receive_message(interfaces[i], buf, len);
+				return i;
 			}
 		}
 	}
@@ -179,7 +196,7 @@ uint16_t ip_checksum(uint8_t *data, size_t size)
 	}
 
 	// Handle any complete 32-bit blocks.
-	char* data_end = data + (size & ~3);
+	uint8_t* data_end = data + (size & ~3);
 	while (data!=data_end) {
 		uint32_t word;
 		memcpy(&word, data, 4);

@@ -1,66 +1,20 @@
 #ifndef _SKEL_H_
 #define _SKEL_H_
 
-#include <sys/ioctl.h>
-#include <net/if.h>
 #include <unistd.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <linux/if_packet.h>
-#include <net/ethernet.h> /* the L2 protocols */
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <net/if.h>
-#include <unistd.h>
-/* According to POSIX.1-2001, POSIX.1-2008 */
-#include <sys/select.h>
-/* ethheader */
-#include <net/ethernet.h>
-/* ether_header */
-#include <arpa/inet.h>
-/* icmphdr */
-#include <netinet/ip_icmp.h>
-/* arphdr */
-#include <net/if_arp.h>
-#include <asm/byteorder.h>
 
-/*
- *Note that "buffer" should be at least the MTU size of the
- * interface, eg 1500 bytes
- */
-#define MAX_LEN 1600
+#define MAX_PACKET_LEN 1600
 #define ROUTER_NUM_INTERFACES 3
 
-#define DIE(condition, message) \
-	do { \
-		if ((condition)) { \
-			fprintf(stderr, "[(%s:%d)]: %s\n", __FILE__, __LINE__, (message)); \
-			perror(""); \
-			exit(1); \
-		} \
-	} while (0)
+int send_to_link(int interface, char *packet, int len);
 
-typedef struct {
-	int len;
-	char payload[MAX_LEN];
-	int interface;
-} packet;
-
-/* Ethernet ARP packet from RFC 826 */
-struct arp_header {
-	uint16_t htype;   /* Format of hardware address */
-	uint16_t ptype;   /* Format of protocol address */
-	uint8_t hlen;    /* Length of hardware address */
-	uint8_t plen;    /* Length of protocol address */
-	uint16_t op;    /* ARP opcode (command) */
-	uint8_t sha[ETH_ALEN];  /* Sender hardware address */
-	uint32_t spa;   /* Sender IP address */
-	uint8_t tha[ETH_ALEN];  /* Target hardware address */
-	uint32_t tpa;   /* Target IP address */
-} __attribute__((packed));
+/* Receives a packet. Returns the interface it has been received from.
+Write to len the total size of the packet (how many bytes in buf are written) */
+/* Blocking function, blocks if there is no packet to be received. */
+int recv_from_any_link(char *packet, int *len);
 
 /* Route table entry */
 struct route_table_entry {
@@ -72,34 +26,10 @@ struct route_table_entry {
 
 /* ARP table entry when skipping the ARP exercise */
 struct arp_entry {
-    __u32 ip;
+    uint32_t ip;
     uint8_t mac[6];
 };
 
-extern int interfaces[ROUTER_NUM_INTERFACES];
-
-/**
- * @brief Sends a packet on an interface.
- *
- * @param m packet
- * @return int
- */
-int send_packet(packet *m);
-/**
- * @brief Blocking function for receiving packets.
- * Returns -1 in exceptional conditions.
- *
- * @param m
- * @return int
- */
-int get_packet(packet *m);
-
-/**
- * @brief Get the interface ip object.
- *
- * @param interface
- * @return char*
- */
 char *get_interface_ip(int interface);
 
 /**
@@ -117,7 +47,6 @@ void get_interface_mac(int interface, uint8_t *mac);
  * @param argc
  * @param argv
  */
-void init(int argc, char *argv[]);
 
 /**
  * @brief ICMP checksum per RFC 792. To compute the checksum
@@ -156,5 +85,16 @@ int read_rtable(const char *path, struct route_table_entry *rtable);
  * function returns the size of the arp table.
  * */
 int parse_arp_table(char *path, struct arp_entry *arp_table);
+
+void init(int argc, char *argv[]);
+
+#define DIE(condition, message) \
+	do { \
+		if ((condition)) { \
+			fprintf(stderr, "[(%s:%d)]: %s\n", __FILE__, __LINE__, (message)); \
+			perror(""); \
+			exit(1); \
+		} \
+	} while (0)
 
 #endif /* _SKEL_H_ */
