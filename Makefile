@@ -8,7 +8,7 @@ CFLAGS=-c -Wall -Werror -Wno-error=unused-variable
 CC=gcc
 
 # Automatic generation of some important lists
-OBJECTS=$(SOURCES:.c=.o) router
+OBJECTS=$(SOURCES:.c=.o)
 INCFLAGS=$(foreach TMP,$(INCPATHS),-I$(TMP))
 LIBFLAGS=$(foreach TMP,$(LIBPATHS),-L$(TMP))
 
@@ -27,5 +27,5 @@ distclean: clean
 	rm -f $(BINARY)
 
 clean:
-	rm -f $(OBJECTS)
+	rm -f $(OBJECTS) $(BINARY)
 
