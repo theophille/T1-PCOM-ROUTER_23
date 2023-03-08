@@ -40,7 +40,27 @@ int get_sock(const char *if_name) {
 	return s;
 }
 
-int socket_receive_message(int sockfd, char *buf, int *len)
+int send_to_link(int intidx, char *buf, size_t len)
+{
+	/*
+	 * Note that "buffer" should be at least the MTU size of the 
+	 * interface, eg 1500 bytes 
+	 */
+	int ret;
+	ret = write(interfaces[intidx], buf, len);
+	DIE(ret == -1, "write");
+	return ret;
+}
+
+int receive_from_link(int intidx, char *buf, size_t len)
+{
+	int ret;
+	ret = read(interface[intidx], buf, len);
+	DIE(ret == -1, "read");
+	return ret;
+}
+
+int socket_receive_message(int sockfd, char *buf, size_t *len)
 {
 	/*
 	 * Note that "buffer" should be at least the MTU size of the
@@ -51,21 +71,7 @@ int socket_receive_message(int sockfd, char *buf, int *len)
 	return 0;
 }
 
-
-
-int send_to_link(int sockfd, char *buf, int len)
-{        
-	/* 
-	 * Note that "buffer" should be at least the MTU size of the 
-	 * interface, eg 1500 bytes 
-	 * */
-	int ret;
-	ret = write(interfaces[sockfd], buf, len);
-	DIE(ret == -1, "write");
-	return ret;
-}
-
-int recv_from_any_link(char * buf, int *len) {
+int recv_from_any_link(char *buf, size_t *len) {
 	int res;
 	fd_set set;
 
@@ -80,7 +86,8 @@ int recv_from_any_link(char * buf, int *len) {
 
 		for (int i = 0; i < ROUTER_NUM_INTERFACES; i++) {
 			if (FD_ISSET(interfaces[i], &set)) {
-				socket_receive_message(interfaces[i], buf, len);
+				size_t bytes = receive_from_link(i, buf, *len);
+				*len = bytes;
 				return i;
 			}
 		}
