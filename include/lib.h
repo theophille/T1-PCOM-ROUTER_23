@@ -49,22 +49,16 @@ void get_interface_mac(int interface, uint8_t *mac);
  */
 
 /**
- * @brief ICMP checksum per RFC 792. To compute the checksum
- * of an ICMP header we must set the checksum to 0 beforehand.
- *
- * @param data memory area to checksum
- * @param size in bytes
- */
-uint16_t icmp_checksum(uint16_t *data, size_t size);
-
-/**
  * @brief IPv4 checksum per  RFC 791. To compute the checksum
  * of an IP header we must set the checksum to 0 beforehand.
  *
+ * also works as ICMP checksum per RFC 792. To compute the checksum
+ * of an ICMP header we must set the checksum to 0 beforehand.
+
  * @param data memory area to checksum
  * @param size in bytes
  */
-uint16_t ip_checksum(uint8_t *data, size_t size);
+uint16_t checksum(uint16_t *data, size_t len);
 
 /**
  * hwaddr_aton - Convert ASCII string to MAC address (colon-delimited format)
