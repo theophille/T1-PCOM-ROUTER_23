@@ -9,12 +9,12 @@
 #define MAX_PACKET_LEN 1600
 #define ROUTER_NUM_INTERFACES 3
 
-int send_to_link(int interface, char *packet, int len);
+int send_to_link(int interface, char *packet, size_t len);
 
 /* Receives a packet. Returns the interface it has been received from.
 Write to len the total size of the packet (how many bytes in buf are written) */
 /* Blocking function, blocks if there is no packet to be received. */
-int recv_from_any_link(char *packet, int *len);
+int recv_from_any_link(char *packet, size_t *len);
 
 /* Route table entry */
 struct route_table_entry {
@@ -82,10 +82,10 @@ int parse_arp_table(char *path, struct arp_entry *arp_table);
 
 void init(int argc, char *argv[]);
 
-#define DIE(condition, message) \
+#define DIE(condition, message, ...) \
 	do { \
 		if ((condition)) { \
-			fprintf(stderr, "[(%s:%d)]: %s\n", __FILE__, __LINE__, (message)); \
+			fprintf(stderr, "[(%s:%d)]: " # message "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
 			perror(""); \
 			exit(1); \
 		} \

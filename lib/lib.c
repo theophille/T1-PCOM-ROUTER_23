@@ -213,7 +213,7 @@ int parse_arp_table(char *path, struct arp_entry *arp_table)
 	FILE *f;
 	fprintf(stderr, "Parsing ARP table\n");
 	f = fopen(path, "r");
-	DIE(f == NULL, "Failed to open arp_table.txt");
+	DIE(f == NULL, "Failed to open %s", path);
 	char line[100];
 	int i = 0;
 	for(i = 0; fgets(line, sizeof(line), f); i++) {
