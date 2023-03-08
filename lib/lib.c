@@ -20,7 +20,8 @@
 
 int interfaces[ROUTER_NUM_INTERFACES];
 
-int get_sock(const char *if_name) {
+int get_sock(const char *if_name)
+{
 	int res;
 	int s = socket(AF_PACKET, SOCK_RAW, 768);
 	DIE(s == -1, "socket");
@@ -35,7 +36,7 @@ int get_sock(const char *if_name) {
 	addr.sll_family = AF_PACKET;
 	addr.sll_ifindex = intf.ifr_ifindex;
 
-	res = bind(s , (struct sockaddr *)&addr , sizeof(addr));
+	res = bind(s, (struct sockaddr *)&addr , sizeof(addr));
 	DIE(res == -1, "bind");
 	return s;
 }
@@ -92,30 +93,35 @@ int recv_from_any_link(char *buf, size_t *len) {
 			}
 		}
 	}
+
 	return -1;
 }
 
 char *get_interface_ip(int interface)
 {
 	struct ifreq ifr;
+	int ret;
 	if (interface == 0)
 		sprintf(ifr.ifr_name, "rr-0-1");
 	else {
 		sprintf(ifr.ifr_name, "r-%u", interface - 1);
 	}
-	ioctl(interfaces[interface], SIOCGIFADDR, &ifr);
+	ret = ioctl(interfaces[interface], SIOCGIFADDR, &ifr);
+	DIE(ret == -1, "ioctl SIOCGIFADDR");
 	return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
 }
 
 void get_interface_mac(int interface, uint8_t *mac)
 {
 	struct ifreq ifr;
+	int ret;
 	if (interface == 0)
 		sprintf(ifr.ifr_name, "rr-0-1");
 	else {
 		sprintf(ifr.ifr_name, "r-%u", interface - 1);
 	}
-	ioctl(interfaces[interface], SIOCGIFHWADDR, &ifr);
+	ret = ioctl(interfaces[interface], SIOCGIFHWADDR, &ifr);
+	DIE(ret == -1, "ioctl SIOCGIFHWADDR");
 	memcpy(mac, ifr.ifr_addr.sa_data, 6);
 }
 
@@ -127,8 +133,10 @@ static int hex2num(char c)
 		return c - 'a' + 10;
 	if (c >= 'A' && c <= 'F')
 		return c - 'A' + 10;
+
 	return -1;
 }
+
 int hex2byte(const char *hex)
 {
 	int a, b;
@@ -138,6 +146,7 @@ int hex2byte(const char *hex)
 	b = hex2num(*hex++);
 	if (b < 0)
 		return -1;
+
 	return (a << 4) | b;
 }
 
