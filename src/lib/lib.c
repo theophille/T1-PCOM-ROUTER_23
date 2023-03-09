@@ -20,7 +20,8 @@
 
 int interfaces[ROUTER_NUM_INTERFACES];
 
-int get_sock(const char *if_name) {
+int get_sock(const char *if_name)
+{
 	int res;
 	int s = socket(AF_PACKET, SOCK_RAW, 768);
 	DIE(s == -1, "socket");
@@ -35,12 +36,32 @@ int get_sock(const char *if_name) {
 	addr.sll_family = AF_PACKET;
 	addr.sll_ifindex = intf.ifr_ifindex;
 
-	res = bind(s , (struct sockaddr *)&addr , sizeof(addr));
+	res = bind(s, (struct sockaddr *)&addr , sizeof(addr));
 	DIE(res == -1, "bind");
 	return s;
 }
 
-int socket_receive_message(int sockfd, char *buf, int *len)
+int send_to_link(int intidx, char *buf, size_t len)
+{
+	/*
+	 * Note that "buffer" should be at least the MTU size of the 
+	 * interface, eg 1500 bytes 
+	 */
+	int ret;
+	ret = write(interfaces[intidx], buf, len);
+	DIE(ret == -1, "write");
+	return ret;
+}
+
+int receive_from_link(int intidx, char *buf, size_t len)
+{
+	int ret;
+	ret = read(interfaces[intidx], buf, len);
+	DIE(ret == -1, "read");
+	return ret;
+}
+
+int socket_receive_message(int sockfd, char *buf, size_t *len)
 {
 	/*
 	 * Note that "buffer" should be at least the MTU size of the
@@ -51,21 +72,7 @@ int socket_receive_message(int sockfd, char *buf, int *len)
 	return 0;
 }
 
-
-
-int send_to_link(int sockfd, char *buf, int len)
-{        
-	/* 
-	 * Note that "buffer" should be at least the MTU size of the 
-	 * interface, eg 1500 bytes 
-	 * */
-	int ret;
-	ret = write(interfaces[sockfd], buf, len);
-	DIE(ret == -1, "write");
-	return ret;
-}
-
-int recv_from_any_link(char * buf, int *len) {
+int recv_from_any_link(char *buf, size_t *len) {
 	int res;
 	fd_set set;
 
@@ -80,35 +87,41 @@ int recv_from_any_link(char * buf, int *len) {
 
 		for (int i = 0; i < ROUTER_NUM_INTERFACES; i++) {
 			if (FD_ISSET(interfaces[i], &set)) {
-				socket_receive_message(interfaces[i], buf, len);
+				size_t bytes = receive_from_link(i, buf, *len);
+				*len = bytes;
 				return i;
 			}
 		}
 	}
+
 	return -1;
 }
 
 char *get_interface_ip(int interface)
 {
 	struct ifreq ifr;
+	int ret;
 	if (interface == 0)
 		sprintf(ifr.ifr_name, "rr-0-1");
 	else {
 		sprintf(ifr.ifr_name, "r-%u", interface - 1);
 	}
-	ioctl(interfaces[interface], SIOCGIFADDR, &ifr);
+	ret = ioctl(interfaces[interface], SIOCGIFADDR, &ifr);
+	DIE(ret == -1, "ioctl SIOCGIFADDR");
 	return inet_ntoa(((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr);
 }
 
 void get_interface_mac(int interface, uint8_t *mac)
 {
 	struct ifreq ifr;
+	int ret;
 	if (interface == 0)
 		sprintf(ifr.ifr_name, "rr-0-1");
 	else {
 		sprintf(ifr.ifr_name, "r-%u", interface - 1);
 	}
-	ioctl(interfaces[interface], SIOCGIFHWADDR, &ifr);
+	ret = ioctl(interfaces[interface], SIOCGIFHWADDR, &ifr);
+	DIE(ret == -1, "ioctl SIOCGIFHWADDR");
 	memcpy(mac, ifr.ifr_addr.sa_data, 6);
 }
 
@@ -120,8 +133,10 @@ static int hex2num(char c)
 		return c - 'a' + 10;
 	if (c >= 'A' && c <= 'F')
 		return c - 'A' + 10;
+
 	return -1;
 }
+
 int hex2byte(const char *hex)
 {
 	int a, b;
@@ -131,6 +146,7 @@ int hex2byte(const char *hex)
 	b = hex2num(*hex++);
 	if (b < 0)
 		return -1;
+
 	return (a << 4) | b;
 }
 
@@ -161,72 +177,22 @@ void init(int argc, char *argv[])
 }
 
 
-uint16_t icmp_checksum(uint16_t *data, size_t size)
+uint16_t checksum(uint16_t *data, size_t len)
 {
-	unsigned long cksum = 0;
-	while(size >1) {
-		cksum += *data++;
-		size -= sizeof(unsigned short);
+	unsigned long checksum = 0;
+	uint16_t extra_byte;
+	while (len > 1) {
+		checksum += *data++;
+		len -= 2;
 	}
-	if (size)
-		cksum += *(unsigned short*)data;
-
-	cksum = (cksum >> 16) + (cksum & 0xffff);
-	cksum += (cksum >>16);
-	return (uint16_t)(~cksum);
-}
-
-
-uint16_t ip_checksum(uint8_t *data, size_t size)
-{
-	// Initialise the accumulator.
-	uint64_t acc = 0xffff;
-
-	// Handle any partial block at the start of the data.
-	unsigned int offset = ((uintptr_t)data) &3;
-	if (offset) {
-		size_t count = 4 - offset;
-		if (count > size)
-			count = size;
-		uint32_t word = 0;
-		memcpy(offset + (char *)&word, data, count);
-		acc += ntohl(word);
-		data += count;
-		size -= count;
+	if (len) {
+		*(uint8_t *)&extra_byte = *(uint8_t *)data;
+		checksum += extra_byte;
 	}
 
-	// Handle any complete 32-bit blocks.
-	uint8_t* data_end = data + (size & ~3);
-	while (data!=data_end) {
-		uint32_t word;
-		memcpy(&word, data, 4);
-		acc += ntohl(word);
-		data += 4;
-	}
-
-	size &= 3;
-
-	// Handle any partial block at the end of the data.
-	if (size) {
-		uint32_t word = 0;
-		memcpy(&word, data, size);
-		acc += ntohl(word);
-	}
-
-	// Handle deferred carries.
-	acc = (acc & 0xffffffff) + (acc >> 32);
-	while (acc >> 16) {
-		acc = (acc & 0xffff) + (acc >> 16);
-	}
-
-	// If the data began at an odd byte address
-	// then reverse the byte order to compensate.
-	if (offset & 1) {
-		acc = ((acc & 0xff00) >> 8) | ((acc & 0x00ff) << 8);
-	}
-
-	// Return the checksum in network byte order.
-	return htons(~acc);
+	checksum = (checksum >> 16) + (checksum & 0xffff);
+	checksum += (checksum >>16);
+	return (uint16_t)(~checksum);
 }
 
 int read_rtable(const char *path, struct route_table_entry *rtable)
@@ -263,7 +229,7 @@ int parse_arp_table(char *path, struct arp_entry *arp_table)
 	FILE *f;
 	fprintf(stderr, "Parsing ARP table\n");
 	f = fopen(path, "r");
-	DIE(f == NULL, "Failed to open arp_table.txt");
+	DIE(f == NULL, "Failed to open %s", path);
 	char line[100];
 	int i = 0;
 	for(i = 0; fgets(line, sizeof(line), f); i++) {

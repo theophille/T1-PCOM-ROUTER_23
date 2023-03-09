@@ -13,7 +13,7 @@ int main(int argc, char *argv[])
 	while (1) {
 
 		int interface;
-		int len;
+		size_t len;
 
 		interface = recv_from_any_link(buf, &len);
 		DIE(interface < 0, "recv_from_any_links");
