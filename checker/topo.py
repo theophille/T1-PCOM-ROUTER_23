@@ -2,9 +2,11 @@
 
 import os
 from pathlib import Path
+import tempfile
 import threading
 import time
 import signal
+import shutil
 import sys
 
 import tests
@@ -153,12 +155,31 @@ class FullNM(object):
                 host.cmd("ip route add default via {}".format(ip))
 
     def add_hosts_entries(self):
+        with open("/etc/hosts", "r") as fin:
+            lines = fin.readlines()
+
+        def not_a_comment(line):
+            return len(line) > 0 and line[0] != "#"
+
+        entries = set(filter(not_a_comment, lines))
         for i, (router, hosts) in enumerate(self.routers):
             for j, host in enumerate(hosts):
                 for h in range(len(self.hosts)):
                     ip = info.get("host_ip", h)
-                    # FIXME entries should be added only if they aren't there.
-                    host.cmd("echo '{} h{}' >> /etc/hosts".format(ip, h))
+                    new_entry = "{} h{}\n".format(ip, h)
+
+                    if new_entry not in entries:
+                        entries.add(new_entry)
+                        lines.append(new_entry)
+
+        fd, path = tempfile.mkstemp()
+        try:
+            with os.fdopen(fd, "w") as tmp:
+                tmp.writelines(lines)
+
+            shutil.copy(path, "/etc/hosts")
+        finally:
+            os.remove(path)
 
     def setup(self):
         self.disable_unneeded()
