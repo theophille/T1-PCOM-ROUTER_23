@@ -12,7 +12,7 @@ ARP_TABLE = "arp_table.txt"
 # If this is low there are bunch of annoying race conditions; this makes
 # testing last veeeery long, but at least it's somewhat robust even on
 # low-resource machines.
-TIMEOUT = 6
+TIMEOUT = 0.5
 
 BASE_FORMATS = {
         "host_name": "h-{}",

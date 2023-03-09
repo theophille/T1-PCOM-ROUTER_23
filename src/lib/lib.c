@@ -56,7 +56,7 @@ int send_to_link(int intidx, char *buf, size_t len)
 int receive_from_link(int intidx, char *buf, size_t len)
 {
 	int ret;
-	ret = read(interface[intidx], buf, len);
+	ret = read(interfaces[intidx], buf, len);
 	DIE(ret == -1, "read");
 	return ret;
 }
