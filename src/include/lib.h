@@ -9,12 +9,24 @@
 #define MAX_PACKET_LEN 1600
 #define ROUTER_NUM_INTERFACES 3
 
-int send_to_link(int interface, char *packet, size_t len);
 
-/* Receives a packet. Returns the interface it has been received from.
-Write to len the total size of the packet (how many bytes in buf are written) */
-/* Blocking function, blocks if there is no packet to be received. */
-int recv_from_any_link(char *packet, size_t *len);
+struct data {
+	char *payload;
+	size_t length;
+};
+
+int send_to_link(int interface, char *frame_data, size_t length);
+
+/*
+ * @brief Receives a packet. Blocking function, blocks if there is no packet to
+ * be received.
+ *
+ * @param frame_data - region of memory in which the data will be copied; should
+ *        have at least MAX_PACKET_LEN bytes allocated 
+ * @param length - will be set to the total number of bytes received.
+ * Returns: the interface it has been received from.
+ */
+int recv_from_any_link(char *frame_data, size_t *length);
 
 /* Route table entry */
 struct route_table_entry {
