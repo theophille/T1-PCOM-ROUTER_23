@@ -23,6 +23,6 @@ build:
 checker:
     stage: test
     image:
-      name: gitlab.cs.pub.ro:5050/pcom/homework1-public
+      name: gitlab.cs.pub.ro:5050/pcom/homework1-public:latest
     script:
         - echo ""
