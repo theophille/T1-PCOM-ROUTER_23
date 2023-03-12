@@ -207,7 +207,8 @@ class FullNM(object):
                 cmd = "./{} {} {} > {} 2> {} &".format(rname, rtable, ifaces,
                                                        out, err)
                 router.cmd(cmd)
-                time.sleep(info.TIMEOUT / 2)
+
+            time.sleep(info.TIMEOUT / 2)
 
     def setup_capture(self, testname, log):
         nr = len(self.routers)
@@ -240,7 +241,6 @@ class FullNM(object):
                 router.cmd(f"cd -")
 
     def teardown_capture(self, testname, log):
-        time.sleep(info.TIMEOUT / 2)
         for i, (router, _) in enumerate(self.routers):
             router.cmd("pkill tshark")
 
@@ -264,10 +264,11 @@ class FullNM(object):
         self.setup_capture(testname, log)
 
         test = tests.TESTS[testname]
-        for hp in range(len(self.hosts)):
+        n_passive_hosts = len(self.hosts)
+        for hp in range(n_passive_hosts):
             lout = os.path.join(log, info.get("output_file", hp))
             lerr = os.path.join(log, info.get("error_file", hp))
-            cmd = "./checker.py \
+            cmd = "./checker/checker.py \
                     --passive \
                     --testname={} \
                     --host={} \
@@ -275,18 +276,17 @@ class FullNM(object):
                     2> {} &".format(testname, hp, lout, lerr)
             self.hosts[hp].cmd(cmd)
 
-        time.sleep(info.TIMEOUT / 2)
-        cmd = "./checker.py \
+        time.sleep(1)
+        cmd = "./checker/checker.py \
                 --active \
                 --testname={} \
                 --host={} &".format(testname, test.host_s)
         self.hosts[test.host_s].cmd(cmd)
 
+        time.sleep(info.TIMEOUT / 2)
         self.teardown_capture(testname, log)
 
         results = {}
-        time.sleep(info.TIMEOUT)
-
         for hp in range(len(self.hosts)):
             lout = os.path.join(log, info.get("output_file", hp))
             with open(lout, "r") as fin:
@@ -321,8 +321,9 @@ def main(run_tests=False, run=None):
     nm.setup()
 
     if run_tests:
+        total_points = 0
         print("{:=^80}\n".format(" Running tests "))
-        for testname in tests.TESTS:
+        for (testname, test) in tests.TESTS.items():
             skipped = False
 
             if should_skip(testname):
@@ -334,8 +335,17 @@ def main(run_tests=False, run=None):
             str_status = "PASSED" if passed else "FAILED"
             if skipped:
                 str_status = "SKIPPED"
-            print("{: >20} {:.>50} {: >8}".format(testname, "", str_status))
+
+            current_points = 0
+            if not skipped and passed:
+                for cat in test.categories:
+                    current_points += tests.CATEGORY_POINTS[cat] / tests.CATEGORY_DICT[cat]
+
+            print("{: >20} {:.>50} {: >8} [{: >2}]".format(testname, "", str_status, round(current_points)))
             time.sleep(info.TIMEOUT / 2)
+            total_points += current_points
+
+        print(f"\nTOTAL: {round(total_points)+5}/100")
     elif run is not None:
         print("{:=^80}\n".format(f" Running test \"{run}\" "))
         results = nm.run_test(run)

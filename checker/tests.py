@@ -558,29 +558,41 @@ def forward10packets_a(testname):
             / ICMP()] * 10
 
 
-Test = namedtuple("Test", ["host_s", "host_r", "router", "active_fn", "passive_fn"])
+Test = namedtuple("Test", ["host_s", "host_r", "router", "active_fn", "passive_fn", "categories"])
 TESTS = OrderedDict([
-        ("router_arp_reply", Test(0, 0, 0, router_arp_reply_a, router_arp_reply_p)),
-        ("router_arp_request", Test(0, 1, 0, router_arp_request_a, router_arp_request_p)),
-        ("forward", Test(0, 1, 0, forward_a, forward_p)),
-        ("forward_no_arp", Test(0, 1, 0, forward_no_arp_a, forward_p)),
-        ("ttl", Test(0, 1, 0, forward_a, forward_p)),
-        ("checksum", Test(0, 1, 0, forward_a, forward_p)),
-        ("wrong_checksum", Test(0, 1, 0, wrong_checksum_a, check_nothing)),
-        ("forward02", Test(0, 2, 0, forward_a, forward_p)),
-        ("forward03", Test(0, 3, 0, forward_a, forward_p)),
-        ("forward10", Test(1, 0, 0, forward_a, forward_p)),
-        ("forward12", Test(1, 2, 0, forward_a, forward_p)),
-        ("forward13", Test(1, 3, 0, forward_a, forward_p)),
-        ("forward20", Test(2, 0, 1, forward_a, forward_p)),
-        ("forward21", Test(2, 1, 1, forward_a, forward_p)),
-        ("forward23", Test(2, 3, 1, forward_a, forward_p)),
-        ("forward30", Test(3, 0, 1, forward_a, forward_p)),
-        ("forward31", Test(3, 1, 1, forward_a, forward_p)),
-        ("forward32", Test(3, 2, 1, forward_a, forward_p)),
-        ("router_icmp", Test(0, 0, 0, router_icmp_a, router_icmp_p)),
-        ("icmp_timeout", Test(0, 0, 0, icmp_timeout_a, icmp_timeout_p)),
-        ("host_unreachable", Test(0, 0, 0, host_unreachable_a, host_unreachable_p)),
-        ("forward10packets", Test(0, 1, 0, forward10packets_a, forward10packets_p)),
-        ("forward10across", Test(0, 3, 0, forward10packets_a, forward10packets_p)),
+        ("router_arp_reply", Test(0, 0, 0, router_arp_reply_a, router_arp_reply_p, ["arp"])),
+        ("router_arp_request", Test(0, 1, 0, router_arp_request_a, router_arp_request_p, ["arp"])),
+        ("forward", Test(0, 1, 0, forward_a, forward_p, ["forward"])),
+        ("forward_no_arp", Test(0, 1, 0, forward_no_arp_a, forward_p, ["forward"])),
+        ("ttl", Test(0, 1, 0, forward_a, forward_p, ["forward"])),
+        ("checksum", Test(0, 1, 0, forward_a, forward_p, ["forward"])),
+        ("wrong_checksum", Test(0, 1, 0, wrong_checksum_a, check_nothing, ["forward"])),
+        ("forward02", Test(0, 2, 0, forward_a, forward_p, ["forward"])),
+        ("forward03", Test(0, 3, 0, forward_a, forward_p, ["forward"])),
+        ("forward10", Test(1, 0, 0, forward_a, forward_p, ["forward"])),
+        ("forward12", Test(1, 2, 0, forward_a, forward_p, ["forward"])),
+        ("forward13", Test(1, 3, 0, forward_a, forward_p, ["forward"])),
+        ("forward20", Test(2, 0, 1, forward_a, forward_p, ["forward"])),
+        ("forward21", Test(2, 1, 1, forward_a, forward_p, ["forward"])),
+        ("forward23", Test(2, 3, 1, forward_a, forward_p, ["forward"])),
+        ("forward30", Test(3, 0, 1, forward_a, forward_p, ["forward"])),
+        ("forward31", Test(3, 1, 1, forward_a, forward_p, ["forward"])),
+        ("forward32", Test(3, 2, 1, forward_a, forward_p, ["forward"])),
+        ("router_icmp", Test(0, 0, 0, router_icmp_a, router_icmp_p, ["icmp"])),
+        ("icmp_timeout", Test(0, 0, 0, icmp_timeout_a, icmp_timeout_p, ["icmp"])),
+        ("host_unreachable", Test(0, 0, 0, host_unreachable_a, host_unreachable_p, ["icmp"])),
+        ("forward10packets", Test(0, 1, 0, forward10packets_a, forward10packets_p, ["forward", "lpm"])),
+        ("forward10across", Test(0, 3, 0, forward10packets_a, forward10packets_p, ["forward", "lpm"])),
         ])
+
+CATEGORY_POINTS = {
+        "arp": 30,
+        "forward": 30,
+        "lpm": 15,
+        "icmp": 20,
+        }
+
+CATEGORY_DICT = {}
+for test in TESTS.values():
+    for cat in test.categories:
+        CATEGORY_DICT[cat] = CATEGORY_DICT.get(cat, 0) + 1
