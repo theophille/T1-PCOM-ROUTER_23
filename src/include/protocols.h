@@ -24,8 +24,7 @@ struct  ether_header {
 /* IP Header */
 struct iphdr {
     // this means that version uses 4 bits, and ihl 4 bits
-    uint8_t    version:4,   // we use version = 4
-        ihl:4;              // ihl = 5 * 32 = 20 bytes (internet header length):w
+    uint8_t    ihl:4, version:4;   // we use version = 4
     uint8_t    tos;      // we don't use this, set to 0
     uint16_t   tot_len;  // total length = ipheader + data
     uint16_t   id;       // id of this packet
