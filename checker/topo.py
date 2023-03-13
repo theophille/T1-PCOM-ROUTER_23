@@ -251,6 +251,10 @@ class FullNM(object):
             old_mask = os.umask(0)
             try:
                 os.chmod(pcap_file, 0o666)
+            except FileNotFoundError as e:
+                time.sleep(1)  # perhaps tshark didn't have enough time to
+                               # write it
+                os.chmod(pcap_file, 0o666)
             finally:
                 os.umask(old_mask)
 
