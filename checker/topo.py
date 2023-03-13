@@ -202,9 +202,9 @@ class FullNM(object):
             err = info.get("err_file", i)
             rtable = info.get("rtable", i)
             rname = "router{}".format(i)
-            router.cmd("ln -s router {}".format(rname))
+            router.cmd("ln -s build/router .".format(rname))
             if not len(router.cmd("pgrep {}".format(rname))):
-                cmd = "./{} {} {} > {} 2> {} &".format(rname, rtable, ifaces,
+                cmd = "./{} {} {} > {} 2> {} &".format("router", rtable, ifaces,
                                                        out, err)
                 router.cmd(cmd)
 
