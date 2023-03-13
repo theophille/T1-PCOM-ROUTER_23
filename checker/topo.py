@@ -326,7 +326,7 @@ def main(run_tests=False, run=None):
 
     if run_tests:
         total_points = 0
-        print("{:=^80}\n".format(" Running tests "))
+        print("{:=^85}\n".format(" Running tests "))
         for (testname, test) in tests.TESTS.items():
             skipped = False
 
