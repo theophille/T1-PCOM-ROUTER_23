@@ -3,6 +3,7 @@
 cd "$(dirname "$0")" || exit 1
 cd ..
 
+cp src/Makefile .
 make
 if [ $? != 0 ]; then
     echo "Make failed, bailing out..." >&2
