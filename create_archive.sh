@@ -12,10 +12,7 @@ fi
 
 rm archive.zip
 sudo make clean
-zip archive.zip Makefile README rtable0.txt rtable1.txt
+zip -r archive.zip Makefile README src/
 if [ -f arp_table.txt ]; then
     zip archive.zip arp_table.txt
 fi
-
-cd src/
-zip -r ../archive.zip *

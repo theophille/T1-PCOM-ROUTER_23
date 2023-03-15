@@ -12,7 +12,7 @@ import tests
 
 
 def capture(interface, output_file="test"):
-    cap = sniff(iface=interface, timeout=info.TIMEOUT / 2)
+    cap = sniff(iface=interface, timeout=info.TIMEOUT - 1)
 
     # FIXME
     packets = []

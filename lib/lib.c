@@ -183,7 +183,7 @@ uint16_t checksum(uint16_t *data, size_t len)
 	unsigned long checksum = 0;
 	uint16_t extra_byte;
 	while (len > 1) {
-		checksum += *data++;
+		checksum += ntohs(*data++);
 		len -= 2;
 	}
 	if (len) {

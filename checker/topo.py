@@ -13,6 +13,7 @@ import tests
 from mininet.log import setLogLevel
 from mininet.net import Mininet
 from mininet.topo import Topo
+from mininet.link import Link
 from mininet.util import dumpNodeConnections
 
 import info
@@ -28,8 +29,8 @@ def signal_handler(signal, frame):
 
 
 def static_arp():
-    srcp = os.path.join("src", info.ARP_TABLE)
-    return path.exists(info.ARP_TABLE) or path.exists(srcp)
+    srcp = os.path.join("", info.ARP_TABLE)
+    return path.exists(srcp)
 
 
 class FullTopo(Topo):
@@ -41,7 +42,7 @@ class FullTopo(Topo):
         for i in range(nr):
             for j in range(i + 1, nr):
                 ifn = info.get("r2r_if_name", i, j)
-                self.addLink(routers[i], routers[j], intfName1=ifn,
+                self.addLink(routers[i], routers[j], delay="1ms", intfName1=ifn,
                              intfName2=ifn)
 
         for i in range(nr):
@@ -51,7 +52,7 @@ class FullTopo(Topo):
                 host = self.addHost(info.get("host_name", hidx))
                 i1 = info.get("host_if_name", hidx)
                 i2 = info.get("router_if_name", j)
-                self.addLink(host, routers[i], intfName1=i1, intfName2=i2)
+                self.addLink(host, routers[i], delay="1ms", intfName1=i1, intfName2=i2)
 
 
 class FullNM(object):
@@ -60,6 +61,7 @@ class FullNM(object):
         self.hosts = []
         self.routers = []
         self.n_hosts = n_hosts
+        self.i = 0
         for i in range(n_routers):
             r = self.net.get(info.get("router_name", i))
             hosts = []
@@ -82,6 +84,7 @@ class FullNM(object):
 
                 router.setIP(router_ip, prefixLen=24, intf=router_if)
                 host.setIP(host_ip, prefixLen=24, intf=host_if)
+                host.cmd("echo 3600 > /proc/sys/net/ipv4/neigh/{}/gc_stale_time".format(host_if))
 
         nr = len(self.routers)
         for i in range(nr):
@@ -202,13 +205,13 @@ class FullNM(object):
             err = info.get("err_file", i)
             rtable = info.get("rtable", i)
             rname = "router{}".format(i)
-            router.cmd("ln -s build/router .".format(rname))
-            if not len(router.cmd("pgrep {}".format(rname))):
-                cmd = "./{} {} {} > {} 2> {} &".format("router", rtable, ifaces,
-                                                       out, err)
-                router.cmd(cmd)
 
-            time.sleep(info.TIMEOUT / 2)
+            if int(router.cmd("ps -aux | grep {} | wc -l".format(rname))) == 1:
+                cmd = 'bash -c "exec -a {} ./router {} {} > {} 2> {} &"'.format(rname, rtable, ifaces,
+                                                out, err)
+                print("Starting {}".format(rname))
+                router.cmd(cmd)
+        time.sleep(2)
 
     def setup_capture(self, testname, log):
         nr = len(self.routers)
@@ -235,7 +238,8 @@ class FullNM(object):
             # launching user, even if that is root (!!!)
             router.cmd(f"cd {log}")
             try:
-                cmd = f"tshark {if_str} -w {pcap} &"
+                cmd = f"tshark -l {if_str} -w {pcap} &"
+         
                 router.cmd(cmd)
             finally:
                 router.cmd(f"cd -")
@@ -257,10 +261,14 @@ class FullNM(object):
                 os.chmod(pcap_file, 0o666)
             finally:
                 os.umask(old_mask)
-
+    
     def run_test(self, testname):
         # restart router if dead
-        self.start_routers()
+
+        if self.i == 0:
+            self.start_routers()
+
+        self.i = 1
 
         log = os.path.join(info.LOGDIR, testname)
         Path(log).mkdir(parents=True, exist_ok=True)
@@ -280,14 +288,14 @@ class FullNM(object):
                     2> {} &".format(testname, hp, lout, lerr)
             self.hosts[hp].cmd(cmd)
 
-        time.sleep(1)
+        time.sleep(2)
         cmd = "./checker/checker.py \
                 --active \
                 --testname={} \
                 --host={} &".format(testname, test.host_s)
         self.hosts[test.host_s].cmd(cmd)
 
-        time.sleep(info.TIMEOUT / 2)
+        time.sleep(info.TIMEOUT)
         self.teardown_capture(testname, log)
 
         results = {}
@@ -317,7 +325,7 @@ def should_skip(testname):
 def main(run_tests=False, run=None):
     topo = FullTopo(nr=info.N_ROUTERS, nh=info.N_HOSTSEACH)
 
-    net = Mininet(topo)
+    net = Mininet(topo, controller=None, link = Link)
     net.start()
 
     nm = FullNM(net, info.N_ROUTERS, info.N_HOSTSEACH)
@@ -346,7 +354,8 @@ def main(run_tests=False, run=None):
                     current_points += tests.CATEGORY_POINTS[cat] / tests.CATEGORY_DICT[cat]
 
             print("{: >20} {:.>50} {: >8} [{: >2}]".format(testname, "", str_status, round(current_points)))
-            time.sleep(info.TIMEOUT / 2)
+            if str_status != "SKIPPED":
+                time.sleep(2)
             total_points += current_points
 
         print(f"\nTOTAL: {round(total_points)+5}/100")
