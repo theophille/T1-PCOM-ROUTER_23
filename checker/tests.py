@@ -581,8 +581,8 @@ TESTS = OrderedDict([
         ("router_icmp", Test(0, 0, 0, router_icmp_a, router_icmp_p, ["icmp"])),
         ("icmp_timeout", Test(0, 0, 0, icmp_timeout_a, icmp_timeout_p, ["icmp"])),
         ("host_unreachable", Test(0, 0, 0, host_unreachable_a, host_unreachable_p, ["icmp"])),
-        ("forward10packets", Test(0, 1, 0, forward10packets_a, forward10packets_p, ["forward", "lpm"])),
-        ("forward10across", Test(0, 3, 0, forward10packets_a, forward10packets_p, ["forward", "lpm"])),
+        ("forward10packets", Test(0, 1, 0, forward10packets_a, forward10packets_p, ["lpm"])),
+        ("forward10across", Test(0, 3, 0, forward10packets_a, forward10packets_p, ["lpm"])),
         ])
 
 CATEGORY_POINTS = {
