@@ -587,9 +587,9 @@ TESTS = OrderedDict([
 
 CATEGORY_POINTS = {
         "arp": 30,
-        "forward": 30,
-        "lpm": 15,
-        "icmp": 20,
+        "forward": 33,
+        "lpm": 16,
+        "icmp": 21,
         }
 
 CATEGORY_DICT = {}

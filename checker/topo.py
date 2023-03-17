@@ -358,7 +358,7 @@ def main(run_tests=False, run=None):
                 time.sleep(2)
             total_points += current_points
 
-        print(f"\nTOTAL: {round(total_points)+5}/100")
+        print(f"\nTOTAL: {round(total_points)}/100")
     elif run is not None:
         print("{:=^80}\n".format(f" Running test \"{run}\" "))
         results = nm.run_test(run)
