@@ -9,12 +9,6 @@
 #define MAX_PACKET_LEN 1600
 #define ROUTER_NUM_INTERFACES 3
 
-
-struct data {
-	char *payload;
-	size_t length;
-};
-
 int send_to_link(int interface, char *frame_data, size_t length);
 
 /*
