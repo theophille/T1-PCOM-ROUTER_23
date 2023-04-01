@@ -67,8 +67,8 @@ struct iphdr *create_ip_header(uint8_t protocol, uint32_t src_ip, uint32_t dest_
 	ip_header->ttl = 64;
 	ip_header->protocol = protocol;
 	ip_header->check = 0;
-	ip_header->saddr = htonl(src_ip);
-	ip_header->daddr = htonl(dest_ip);
+	ip_header->saddr = src_ip;
+	ip_header->daddr = dest_ip;
 
 	return ip_header;
 }
@@ -88,27 +88,42 @@ void send_icmp(char *buf, uint8_t type, uint8_t code, int send_interf) {
 	icmphdr.type = type;
 	icmphdr.code = code;
 	icmphdr.checksum = 0;
-	icmphdr.un.echo.id = 0;
-	icmphdr.un.echo.sequence = 0;
 
 	size_t icmp_buf_len;
 	char *icmp_buf;
 
-	if(type == 11 && code == 0) {
+	if(type == 0 && code == 0) {
+		icmp_buf_len = eth_len + iph_len + icmph_len + 8;
+		icmp_buf = (char *)calloc(icmp_buf_len, sizeof(char));
+
+		struct icmphdr *buf_icmphdr = (struct icmphdr *)(buf + eth_len + iph_len);
+
+		memcpy(icmp_buf, eth_hdr, eth_len);
+		memcpy(icmp_buf + eth_len, new_ip_header, iph_len);
+		icmphdr.un.echo.id = buf_icmphdr->un.echo.id;
+		icmphdr.un.echo.sequence = buf_icmphdr->un.echo.sequence;
+		memcpy(icmp_buf + eth_len + iph_len, &icmphdr, icmph_len);
+		memcpy(icmp_buf + eth_len + iph_len + icmph_len, buf + eth_len + iph_len, 8);
+	}
+
+	if((type == 11 && code == 0) || (type == 3 && code == 0)) {
 		icmp_buf_len = eth_len + 2 * iph_len + 16;
 		icmp_buf = (char *)calloc(icmp_buf_len, sizeof(char));
 
 		memcpy(icmp_buf, eth_hdr, eth_len);
 		memcpy(icmp_buf + eth_len, new_ip_header, iph_len);
+		icmphdr.un.echo.id = 0;
+		icmphdr.un.echo.sequence = 0;
 		memcpy(icmp_buf + eth_len + iph_len, &icmphdr, icmph_len);
 		memcpy(icmp_buf + eth_len + iph_len + icmph_len, iphdr_buf_address, iph_len + 8);
-
-		struct icmphdr *icmp_buf_icmphdr = (struct icmphdr *)(icmp_buf + eth_len + iph_len);
-		icmp_buf_icmphdr->checksum = htons(checksum((uint16_t *)icmp_buf_icmphdr, icmp_buf_len - eth_len - iph_len));
-		struct iphdr *icmp_buf_iphdr = (struct iphdr *)(icmp_buf + eth_len);
-		icmp_buf_iphdr->check = htons(checksum((uint16_t *)icmp_buf_iphdr, icmp_buf_len - eth_len));
-		icmp_buf_iphdr->tot_len = htons(icmp_buf_len - eth_len);
 	}
+
+	struct icmphdr *icmp_buf_icmphdr = (struct icmphdr *)(icmp_buf + eth_len + iph_len);
+	icmp_buf_icmphdr->checksum = htons(checksum((uint16_t *)icmp_buf_icmphdr, icmp_buf_len - eth_len - iph_len));
+
+	struct iphdr *icmp_buf_iphdr = (struct iphdr *)(icmp_buf + eth_len);
+	icmp_buf_iphdr->check = htons(checksum((uint16_t *)icmp_buf_iphdr, icmp_buf_len - eth_len));
+	icmp_buf_iphdr->tot_len = htons(icmp_buf_len - eth_len);
 
 	send_to_link(send_interf, icmp_buf, icmp_buf_len);
 
@@ -126,6 +141,7 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 	enum ip_prot {
 		checking_packet,
 		checking_packet_err,
+		router_as_destination,
 		ttl,
 		ttl_err,
 		finding_route,
@@ -140,13 +156,37 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 		switch (state) {
 			case checking_packet:
 				if(ntohs(src_checksum) == dest_checksum)
-					state = ttl;
+					state = router_as_destination;
 				else state = checking_packet_err;
 				break;
 
 			case checking_packet_err:
 				write(1, "chk_drop", 9);
 				state = end;
+				break;
+
+			case router_as_destination:
+				char *router_ip = get_interface_ip(recv_interf);
+				printf("%s\n", router_ip);
+				char r_ip_in_bytes[4];
+
+				int i = 0;
+				char *token = strtok(router_ip, ".");
+
+				while(token != NULL) {
+					r_ip_in_bytes[i++] = (uint8_t)atoi(token);
+					token = strtok(NULL, ".");
+				}
+
+				printf("IP dest: %x\n", ip_header->daddr);
+				printf("Router %x\n", *(uint32_t *)r_ip_in_bytes);
+
+				if(ip_header->daddr == *(uint32_t *)r_ip_in_bytes) {
+					send_icmp(buf, 0, 0, recv_interf);
+				
+				state = end;
+				} else state = ttl;
+
 				break;
 
 			case ttl:
@@ -171,6 +211,7 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 
 			case finding_route_err:
 				write(1, "lpm_drop", 9);
+				send_icmp(buf, 3, 0, recv_interf);
 				state = end;
 				break;
 
