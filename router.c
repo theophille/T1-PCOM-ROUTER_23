@@ -11,6 +11,10 @@ struct route_table_entry *rtable;
 int atable_size;
 struct arp_entry *atable;
 
+const size_t iph_len = sizeof(struct iphdr);
+const size_t eth_len = sizeof(struct ether_header);
+const size_t icmph_len = sizeof(struct icmphdr);
+
 uint8_t compare_mac_addresses(uint8_t *fst_mac, uint8_t *scd_mac) {
 	for(uint8_t bit = 0; bit < 6; bit++)
 		if(fst_mac[bit] != scd_mac[bit])
@@ -51,13 +55,71 @@ void print_mac_address(uint8_t *mac) {
 	printf("\n");
 }
 
-void ipv4_protocol(char *buf, size_t len) {
+struct iphdr *create_ip_header(uint8_t protocol, uint32_t src_ip, uint32_t dest_ip) {
+	struct iphdr *ip_header = (struct iphdr*)malloc(sizeof(struct iphdr));
+	
+	ip_header->version = 4;
+	ip_header->ihl = 5;
+	ip_header->tos = 0;
+	ip_header->tot_len = 0;
+	ip_header->id = htons(1);
+	ip_header->frag_off = 0;
+	ip_header->ttl = 64;
+	ip_header->protocol = protocol;
+	ip_header->check = 0;
+	ip_header->saddr = htonl(src_ip);
+	ip_header->daddr = htonl(dest_ip);
+
+	return ip_header;
+}
+
+void send_icmp(char *buf, uint8_t type, uint8_t code, int send_interf) {
+	struct ether_header *eth_hdr = (struct ether_header *)buf;
+	uint8_t *aux = (uint8_t *)malloc(6 * sizeof(uint8_t));
+	memcpy(aux, eth_hdr->ether_dhost, 6);
+	memcpy(eth_hdr->ether_dhost, eth_hdr->ether_shost, 6);
+	memcpy(eth_hdr->ether_shost, aux, 6);
+	free(aux);
+
+	struct iphdr *iphdr_buf_address = (struct iphdr *)(buf + eth_len);
+	struct iphdr *new_ip_header = create_ip_header(1, iphdr_buf_address->daddr, iphdr_buf_address->saddr);
+
+	struct icmphdr icmphdr;
+	icmphdr.type = type;
+	icmphdr.code = code;
+	icmphdr.checksum = 0;
+	icmphdr.un.echo.id = 0;
+	icmphdr.un.echo.sequence = 0;
+
+	size_t icmp_buf_len;
+	char *icmp_buf;
+
+	if(type == 11 && code == 0) {
+		icmp_buf_len = eth_len + 2 * iph_len + 16;
+		icmp_buf = (char *)calloc(icmp_buf_len, sizeof(char));
+
+		memcpy(icmp_buf, eth_hdr, eth_len);
+		memcpy(icmp_buf + eth_len, new_ip_header, iph_len);
+		memcpy(icmp_buf + eth_len + iph_len, &icmphdr, icmph_len);
+		memcpy(icmp_buf + eth_len + iph_len + icmph_len, iphdr_buf_address, iph_len + 8);
+
+		struct icmphdr *icmp_buf_icmphdr = (struct icmphdr *)(icmp_buf + eth_len + iph_len);
+		icmp_buf_icmphdr->checksum = htons(checksum((uint16_t *)icmp_buf_icmphdr, icmp_buf_len - eth_len - iph_len));
+		struct iphdr *icmp_buf_iphdr = (struct iphdr *)(icmp_buf + eth_len);
+		icmp_buf_iphdr->check = htons(checksum((uint16_t *)icmp_buf_iphdr, icmp_buf_len - eth_len));
+		icmp_buf_iphdr->tot_len = htons(icmp_buf_len - eth_len);
+	}
+
+	send_to_link(send_interf, icmp_buf, icmp_buf_len);
+
+	free(icmp_buf);
+}
+
+void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 	struct iphdr *ip_header = (struct iphdr *)(buf + sizeof(struct ether_header));
 	uint16_t src_checksum = ip_header->check;
 	ip_header->check = 0;
 	uint16_t dest_checksum = checksum((uint16_t *)ip_header, sizeof(struct iphdr));
-	// printf("Real Checksum -> %hx\n", htons(src_checksum));
-	// printf("Recalc Checksum -> %hx\n", htons(dest_checksum));
 
 	struct route_table_entry *next_hop_data;
 
@@ -95,7 +157,8 @@ void ipv4_protocol(char *buf, size_t len) {
 				break;
 
 			case ttl_err:
-				write(1, "ttl_drop", 9);
+				// write(1, "ttl_drop", 9);
+				send_icmp(buf, 11, 0, recv_interf);
 				state = end;
 				break;
 
@@ -115,24 +178,12 @@ void ipv4_protocol(char *buf, size_t len) {
 				ip_header->check = 0x0;
 				uint16_t new_chk = checksum((uint16_t *)ip_header, sizeof(struct iphdr));
 				ip_header->check = htons(new_chk);
-				//printf("CHECK --> %hx\n", ip_header->check);
 
 				struct ether_header *eth_hdr = (struct ether_header *)buf;
 				get_interface_mac(next_hop_data->interface, eth_hdr->ether_shost);
 				get_mac_address_from_cache(next_hop_data->next_hop, eth_hdr->ether_dhost);
 				eth_hdr->ether_type = htons(0x0800);
-
-				// print_mac_address(eth_hdr->ether_dhost);
-				// print_mac_address(eth_hdr->ether_shost);
-
-				size_t headers_length = sizeof(sizeof(struct ether_header) + sizeof(struct iphdr));
-
-				// char *send_buf = (char *)calloc(MAX_PACKET_LEN, sizeof(char));
-				// memcpy(send_buf, &eth_hdr, sizeof(struct ether_header));
-				// memcpy(send_buf + sizeof(struct ether_header), ip_header, sizeof(struct iphdr));
-				// memcpy(send_buf + headers_length, buf + headers_length, MAX_PACKET_LEN - headers_length);
-
-				//printf("Interface id: %d\nbuf len: %lu\n", next_hop_data->interface, len);
+				
 				send_to_link(next_hop_data->interface, buf, len);
 
 				// struct arp_header arp_header;
@@ -183,7 +234,7 @@ int main(int argc, char *argv[]) {
 		if(compare_mac_addresses(eth_hdr->ether_dhost, intf_mac)) {
 			switch(ntohs(eth_hdr->ether_type)) {
 				case 0x0800:
-					ipv4_protocol(buf, len);
+					ipv4_protocol(buf, len, interface);
 					break;
 				case 0x0806:
 					write(1, "ARP", 4);
