@@ -1,0 +1,1 @@
+send_to_link(next_hop_data->interface, buf, len);

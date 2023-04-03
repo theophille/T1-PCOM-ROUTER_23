@@ -14,6 +14,15 @@ struct arp_entry *atable;
 const size_t iph_len = sizeof(struct iphdr);
 const size_t eth_len = sizeof(struct ether_header);
 const size_t icmph_len = sizeof(struct icmphdr);
+const size_t arph_len = sizeof(struct arp_header);
+
+queue arp_queue;
+
+struct queue_packet {
+	int interface;
+	size_t len;
+	char *buf;
+};
 
 uint8_t compare_mac_addresses(uint8_t *fst_mac, uint8_t *scd_mac) {
 	for(uint8_t bit = 0; bit < 6; bit++)
@@ -37,13 +46,15 @@ struct route_table_entry *longest_prefix_match(uint32_t dest_ip) {
 	return search_result;
 }
 
-void get_mac_address_from_cache(uint32_t ip, uint8_t *mac) {
+int get_mac_address_from_cache(uint32_t ip, uint8_t *mac) {
 	for(int i = 0; i < atable_size; i++) {
 		if(ip == atable[i].ip) {
 			memcpy(mac, atable[i].mac, 6);
-			break;
+			return 1;
 		}
 	}
+
+	return -1;
 }
 
 void print_mac_address(uint8_t *mac) {
@@ -167,7 +178,6 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 
 			case router_as_destination:
 				char *router_ip = get_interface_ip(recv_interf);
-				printf("%s\n", router_ip);
 				char r_ip_in_bytes[4];
 
 				int i = 0;
@@ -177,9 +187,6 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 					r_ip_in_bytes[i++] = (uint8_t)atoi(token);
 					token = strtok(NULL, ".");
 				}
-
-				printf("IP dest: %x\n", ip_header->daddr);
-				printf("Router %x\n", *(uint32_t *)r_ip_in_bytes);
 
 				if(ip_header->daddr == *(uint32_t *)r_ip_in_bytes) {
 					send_icmp(buf, 0, 0, recv_interf);
@@ -197,15 +204,15 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 				break;
 
 			case ttl_err:
-				// write(1, "ttl_drop", 9);
 				send_icmp(buf, 11, 0, recv_interf);
 				state = end;
 				break;
 
 			case finding_route:
 				next_hop_data = longest_prefix_match(ip_header->daddr);
-				if(next_hop_data != NULL)
+				if(next_hop_data != NULL) {
 					state = sending_arp;
+				}
 				else state = finding_route_err;
 				break;
 
@@ -219,25 +226,49 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 				ip_header->check = 0x0;
 				uint16_t new_chk = checksum((uint16_t *)ip_header, sizeof(struct iphdr));
 				ip_header->check = htons(new_chk);
-
+				
 				struct ether_header *eth_hdr = (struct ether_header *)buf;
 				get_interface_mac(next_hop_data->interface, eth_hdr->ether_shost);
-				get_mac_address_from_cache(next_hop_data->next_hop, eth_hdr->ether_dhost);
 				eth_hdr->ether_type = htons(0x0800);
-				
-				send_to_link(next_hop_data->interface, buf, len);
 
-				// struct arp_header arp_header;
-				// arp_header.htype = htons(0x1);
-				// arp_header.ptype = htons(0x0800);
-				// arp_header.hlen = 0x6;
-				// arp_header.plen = 0x4;
-				// arp_header.op = htons(0x1);
-				// get_interface_mac(next_hop_data->interface, arp_header.sha);
-				// arp_header.spa = *(uint32_t *)get_interface_ip(next_hop_data->interface);
-				// get_mac_address_from_cache(next_hop_data->next_hop, arp_header.tha);
-				// arp_header.tpa = htonl(next_hop_data->next_hop);
+				if(get_mac_address_from_cache(next_hop_data->next_hop, eth_hdr->ether_dhost) > 0) {
+					send_to_link(next_hop_data->interface, buf, len);
+				} else {
+					size_t broadcast_buf_len = eth_len + arph_len;
+					char *broadcast_buf = (char *)calloc(eth_len + arph_len, sizeof(char));
+					struct ether_header *b_ether = (struct ether_header *)broadcast_buf;
+					memcpy(b_ether->ether_shost, eth_hdr->ether_dhost, 6);
+					for(int i = 0; i < 6; i++)
+						b_ether->ether_dhost[i] = 0xff;
+					b_ether->ether_type = htons(0x0806);
 
+					struct arp_header arp_header;
+					arp_header.htype = htons(0x1);
+					arp_header.ptype = htons(0x0800);
+					arp_header.hlen = 0x6;
+					arp_header.plen = 0x4;
+					arp_header.op = htons(0x1);
+					get_interface_mac(next_hop_data->interface, arp_header.sha);
+					inet_pton(AF_INET, get_interface_ip(next_hop_data->interface), &arp_header.spa);
+					for(int i = 0; i < 6; i++)
+						arp_header.tha[i] = 0x0;
+					arp_header.tpa = next_hop_data->next_hop;
+
+					memcpy(broadcast_buf + eth_len, &arp_header, arph_len);
+
+					send_to_link(next_hop_data->interface, broadcast_buf, broadcast_buf_len);
+
+					struct queue_packet *qp = (struct queue_packet *)malloc(sizeof(struct queue_packet));
+					qp->interface = next_hop_data->interface;
+					qp->buf = (char *)malloc(len);
+					qp->len = len;
+					memcpy(qp->buf, buf, len);
+					queue_enq(arp_queue, qp);
+
+					free(broadcast_buf);
+				}
+
+ 
 				state = end;
 				break;
 
@@ -247,17 +278,39 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 	}
 }
 
+void arp_protocol(char *buf, size_t len) {
+	if(!queue_empty(arp_queue)) {
+		struct queue_packet *queue_packet = (struct queue_packet *)queue_deq(arp_queue);
+		struct ether_header *buf_eth = (struct ether_header *)buf;
+		struct arp_header *buf_arph = (struct arp_header *)(buf + eth_len);
+		struct ether_header *q_buf_eth = (struct ether_header *)queue_packet->buf;
+
+		memcpy(q_buf_eth->ether_dhost, buf_eth->ether_shost, 6);
+
+		atable[atable_size].ip = buf_arph->spa;
+		memcpy(atable[atable_size].mac, buf_eth->ether_shost, 6);
+		atable_size++;
+
+		send_to_link(queue_packet->interface, queue_packet->buf, queue_packet->len);
+
+		free(queue_packet->buf);
+		free(queue_packet);
+	}
+}
+
 int main(int argc, char *argv[]) {
 	char buf[MAX_PACKET_LEN];
 
 	// Do not modify this line
 	init(argc - 2, argv + 2);
 	
-	rtable = (struct route_table_entry *)malloc(80000 * sizeof(struct route_table_entry));
+	rtable = (struct route_table_entry *)malloc(100000 * sizeof(struct route_table_entry));
 	rtable_size = read_rtable(argv[1], rtable);
 	
-	atable = (struct arp_entry *)malloc(20 * sizeof(struct arp_entry));
-	atable_size = parse_arp_table("arp_table.txt", atable);
+	atable = (struct arp_entry *)malloc(50 * sizeof(struct arp_entry));
+	atable_size = 0;
+
+	arp_queue = queue_create();
 
 	while (1) {
 
@@ -272,16 +325,55 @@ int main(int argc, char *argv[]) {
 		uint8_t *intf_mac = (uint8_t *)malloc(6 * sizeof(uint8_t));
 		get_interface_mac(interface, intf_mac);
 
-		if(compare_mac_addresses(eth_hdr->ether_dhost, intf_mac)) {
+		uint8_t broadcast_address[6];
+		for(int i = 0; i < 6; i++)
+			broadcast_address[i] = 0xff;
+
+		struct arp_header *arph = (struct arp_header *)(buf + eth_len);
+		if(compare_mac_addresses(eth_hdr->ether_dhost, broadcast_address)
+			|| (compare_mac_addresses(eth_hdr->ether_dhost, intf_mac) 
+				&& eth_hdr->ether_type == htons(0x0806)
+				&& arph->op == htons(0x1))) {
+			struct arp_header *bc_arp_header = (struct arp_header *)(buf + eth_len);
+			char *intf_ip = get_interface_ip(interface);
+			uint32_t nw_intf_ip;
+			inet_pton(AF_INET, intf_ip, &nw_intf_ip);
+
+			if(bc_arp_header->tpa == nw_intf_ip) {
+				char arp_reply[eth_len + arph_len];
+				struct ether_header *arp_reply_eth_hdr = (struct ether_header *)arp_reply;
+
+				memcpy(arp_reply_eth_hdr->ether_shost, intf_mac, 6);
+				memcpy(arp_reply_eth_hdr->ether_dhost, eth_hdr->ether_shost, 6);
+				arp_reply_eth_hdr->ether_type = htons(0x0806);
+
+				struct arp_header *arp_header = (struct arp_header *)(arp_reply + eth_len);
+				arp_header->htype = htons(0x1);
+				arp_header->ptype = htons(0x0800);
+				arp_header->hlen = 0x6;
+				arp_header->plen = 0x4;
+				arp_header->op = htons(0x2);
+				memcpy(arp_header->sha, intf_mac, 6);
+				arp_header->spa = nw_intf_ip;
+				memcpy(arp_header->tha, eth_hdr->ether_shost, 6);
+				arp_header->tpa = bc_arp_header->spa;
+
+				send_to_link(interface, arp_reply, eth_len + arph_len);
+			}
+
+		} else if(compare_mac_addresses(eth_hdr->ether_dhost, intf_mac)) {
+
 			switch(ntohs(eth_hdr->ether_type)) {
 				case 0x0800:
 					ipv4_protocol(buf, len, interface);
 					break;
 				case 0x0806:
-					write(1, "ARP", 4);
+					arp_protocol(buf, len);
 					break;
 			}
+
+		} else {
+
 		}
 	}
 }
-
