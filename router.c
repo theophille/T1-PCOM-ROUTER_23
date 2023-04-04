@@ -5,6 +5,8 @@
 #include "lib.h"
 #include "protocols.h"
 
+#define FST_BIT_MASK 0x80000000;
+
 int rtable_size;
 struct route_table_entry *rtable;
 
@@ -24,6 +26,95 @@ struct queue_packet {
 	char *buf;
 };
 
+struct trie_node {
+	struct route_table_entry *rte;
+	struct trie_node *zero;
+	struct trie_node *one;
+};
+
+struct trie_node *prefix_tree;
+
+struct trie_node *create_trie_node() {
+	struct trie_node *tn = (struct trie_node *)malloc(sizeof(struct trie_node));
+	tn->zero = NULL;
+	tn->one = NULL;
+	tn->rte = NULL;
+	return tn;
+}
+
+struct trie_node *create_prefix_tree() {
+	struct trie_node *root = create_trie_node();
+
+	for(uint32_t i = 0; i < rtable_size; i++) {
+		uint8_t bit = 0;
+		struct trie_node *cursor = root;
+		uint32_t current_prefix = ntohl(rtable[i].prefix);
+		uint32_t current_mask = ntohl(rtable[i].mask);
+
+		printf("Prefix %x && Mask %x\n", current_prefix, current_mask);
+
+		while(bit != 32) {
+			
+			if(current_mask == 0)
+				break;
+
+			uint32_t current_bit = current_prefix & FST_BIT_MASK;
+
+			if(current_bit == 0x80000000) {
+				if(cursor->one == NULL)
+					cursor->one = create_trie_node();
+				cursor = cursor->one;
+			} else {
+				if(cursor->zero == NULL)
+					cursor->zero = create_trie_node();
+				cursor = cursor->zero;
+			}
+
+			current_prefix = current_prefix << 1;
+			current_mask = current_mask << 1;
+			bit++;
+		}
+
+		cursor->rte = &rtable[i];
+	}
+
+	return root;
+}
+
+struct route_table_entry *longest_prefix_match(uint32_t dest_ip, struct trie_node *root) {
+	struct route_table_entry *search_result = NULL;
+	struct trie_node *cursor = root;
+	uint8_t bit = 0;
+
+	dest_ip = htonl(dest_ip);
+
+	printf("Dest addr: %x\n", dest_ip);
+
+	while(bit != 32) {
+		uint32_t current_bit = dest_ip & FST_BIT_MASK;
+
+		if(current_bit == 0x80000000) {
+			if(cursor->one != NULL)
+				cursor = cursor->one;
+			else break;
+		} else {
+			if(cursor->zero != NULL)
+				cursor = cursor->zero;
+			else break;
+		}
+
+		if(cursor->rte != NULL)
+			search_result = cursor->rte;
+
+		bit++;
+		dest_ip = dest_ip << 1;
+	}
+
+	printf("Last bit: %hhu\n", bit);
+
+	return search_result;
+}
+
 uint8_t compare_mac_addresses(uint8_t *fst_mac, uint8_t *scd_mac) {
 	for(uint8_t bit = 0; bit < 6; bit++)
 		if(fst_mac[bit] != scd_mac[bit])
@@ -31,20 +122,20 @@ uint8_t compare_mac_addresses(uint8_t *fst_mac, uint8_t *scd_mac) {
 	return 1;
 }
 
-struct route_table_entry *longest_prefix_match(uint32_t dest_ip) {
-	uint32_t max_mask = 0x0;
-	struct route_table_entry *search_result = NULL;
+// struct route_table_entry *longest_prefix_match(uint32_t dest_ip) {
+// 	uint32_t max_mask = 0x0;
+// 	struct route_table_entry *search_result = NULL;
 
-	for(int i = 0; i < rtable_size; i++) {
-		if((dest_ip & rtable[i].mask) == rtable[i].prefix)
-			if(rtable[i].mask > max_mask) {
-				max_mask = rtable[i].mask;
-				search_result = &rtable[i];
-			}
-	}
+// 	for(int i = 0; i < rtable_size; i++) {
+// 		if((dest_ip & rtable[i].mask) == rtable[i].prefix)
+// 			if(rtable[i].mask > max_mask) {
+// 				max_mask = rtable[i].mask;
+// 				search_result = &rtable[i];
+// 			}
+// 	}
 
-	return search_result;
-}
+// 	return search_result;
+// }
 
 int get_mac_address_from_cache(uint32_t ip, uint8_t *mac) {
 	for(int i = 0; i < atable_size; i++) {
@@ -209,7 +300,7 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 				break;
 
 			case finding_route:
-				next_hop_data = longest_prefix_match(ip_header->daddr);
+				next_hop_data = longest_prefix_match(ip_header->daddr, prefix_tree);
 				if(next_hop_data != NULL) {
 					state = sending_arp;
 				}
@@ -311,6 +402,8 @@ int main(int argc, char *argv[]) {
 	atable_size = 0;
 
 	arp_queue = queue_create();
+
+	prefix_tree = create_prefix_tree();
 
 	while (1) {
 
