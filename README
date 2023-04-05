@@ -1,0 +1,85 @@
+-------------------------------------------------------------------------------
+               README - TEMA 1 PCOM - PĂDURARIU TEOFIL - 324CC
+-------------------------------------------------------------------------------
+
+Am rezolvat toate sub-cerințele acestei teme.
+Pe checkerul local îmi trec toate testele.
+
+PREZENTARE SOLUȚIE:
+Tema a presupus implementarea Dataplane-ului unui router.
+
+Routerul așteaptă să primească orice pachet din rețea. Când un pachet ajunge
+la router, el este analizat și în funcție de headerele sale se vor lua decizii.
+
+1) Dacă primim un ARP REQUEST (inclusă și situația în care în headerul ETHERNET
+   al pachetului destinație este adresa de broadcast FF:FF:FF:FF:FF:FF) atunci
+   routerul creează un ARP REPLY într-un buffer, cu destinația sursa ARP REQUEST-
+   ului și sursa mac-ul interfeței pe care a venit pachetul. Cu informațiile
+   specifice acestei situații se va completa și headerul ARP. Finally, este
+   trimis replyul.
+
+2) Dacă primim un pachet cu destinația MAC-ul interfeței pe care a venit
+   pachetul, atunci vor fi două situații în funcție de tipul ether_typeului:
+     
+     a) ether_type = 0x0800 - specific protocolului ipv4
+     b) ether_type = 0x0806 - specific primirii unui ARP REPLY
+
+     DESCRIERE IPv4:
+     Am gestionat pachetele IPv4 cu ajutorul unei mașini de stări:
+     - Starea checking_packet: se recalculează checksum-ul headerului IP 
+     (cu fieldul checksum setat pe 0) și se compară cu checksum-ul primit
+     - Starea checking_packet_err: Afișează o eroare în cazul în care
+     checksum-ul nu e ok
+     - Starea router_as_destination: se ajunge în ea daca checksum-ul e ok.
+     Se verifică dacă routerul este destinația pachetului și în caz 
+     afirmativ, se trimite un ICMP REPLY către hostul care a trimis pachetul.
+     - Starea ttl: se ajunge în ea din router_as_destination în cazul în care
+     routerul nu este destinația pachetului. Aici se verifică TTL-ul și
+     se decrementeaza daca e ok.
+     - Starea ttl_err: aici este trimis un ICMP REPLY catre host cu mesajul
+     Time exceeded (type 11, code 0 în headerul ICMP)
+     - Starea finding_route: starea în care se ajunge dacă totul este ok
+     în starea ttl. Aici se află detaliile următorului hoop, prin căutarea
+     în tabela de routare (am folosit algritmul LPM, implementat folosind
+     structura de date TRIE - cu operații pe biți, se află cu ușurință
+     datele următorului hop - mai multe detalii pe cod)
+     - Starea finding_route_err: este trimis un ICMP REPLY către host cu mesajul
+     Destination Unreachable (type 3, code 0, în headerul ICMP)
+     - Starea sending_arp: se ajunge aici în situația în care s-a găsit
+     următorul hop. Recalculăm checksum-ul și dacă găsim în tabela ARP
+     adresa MAC corespondentă adresei IP a următorului hop, trimitem pachetul
+     cu modificările de adresă ale pachetului inițial făcute corespunzător
+     (sursa router, destinație next hop). Dacă nu găsim în tabelă un entry
+     corespunzător acestei adrese IP, vom crea un ARP REQUEST pe care îl vom
+     trimite următorului hop, așteptând din partea lui un ARP REPLY, în urma
+     căruia să trimitem pachetul. Până primim ARP REPLY-ul, conținutul bufferului
+     îl vom stoca într-o coadă (datele pe care le-am stocat în coadă sunt de
+     tip struct queue_packet - check out my code - am reținut mai multe detalii
+     necesare trimiterii pachetului în momentul sosirii ARP REPLY-ului)
+
+     HANDLING ARP REPLY:
+     La primirea unui pachet de tip ARP REPLY, routerul în cazul în care coada
+     este goală, ia de aici pachetul pus în așteptare, îi rescrie headerele
+     folosind adresele din ARP REPLY-ul primit și trimite vechiul pachet
+     mai departe.
+
+     DESCRIERE ICMP:
+     Pentru tratarea erorilor ttl, lpm și a situației în care routerul este 
+     destinația pachetului, am folosit protocolul ICMP. În fiecare situație a 
+     fost trimis un ICMP REPLY prin apelul funcției send_icmp(), care, pe baza 
+     type-ului și a code-ului, creează un buffer în care pune informațiile unui 
+     ICMP REPLY specifice acestora și trimite informațiile plasate în acesta 
+     către sursa pachetului inițial
+
+     EFICIENȚĂ LPM:
+     Pentru a căuta eficient în tabela de routare, am creat global structura de 
+     date trie, în care am stocat specific toate prefixele din tabela de routare.
+     La terminarea fiecărui prefix, în câmpul de date al unui nod am stocat 
+     adresa către table entry-ul respectiv. Pentru a afla LPM în funcție de 
+     bitul curent (luat de la stanga la dreapta), mă deplasez cu un cursor prin 
+     întreg trie-ul (daca bitul e 0, mă duc pe ramura zero și văd dacă există 
+     vreun entry acolo și dacă da, stochez în variabila de rezultat; dacă bitul 
+     este 1, mă duc pe ramura one și fac același lucru; la final se întoarce 
+     variabila rezultat).
+
+Am oferit detalii și pe codul meu sursă, în comentarii.

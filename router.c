@@ -122,21 +122,6 @@ uint8_t compare_mac_addresses(uint8_t *fst_mac, uint8_t *scd_mac) {
 	return 1;
 }
 
-// struct route_table_entry *longest_prefix_match(uint32_t dest_ip) {
-// 	uint32_t max_mask = 0x0;
-// 	struct route_table_entry *search_result = NULL;
-
-// 	for(int i = 0; i < rtable_size; i++) {
-// 		if((dest_ip & rtable[i].mask) == rtable[i].prefix)
-// 			if(rtable[i].mask > max_mask) {
-// 				max_mask = rtable[i].mask;
-// 				search_result = &rtable[i];
-// 			}
-// 	}
-
-// 	return search_result;
-// }
-
 int get_mac_address_from_cache(uint32_t ip, uint8_t *mac) {
 	for(int i = 0; i < atable_size; i++) {
 		if(ip == atable[i].ip) {
@@ -268,6 +253,7 @@ void ipv4_protocol(char *buf, size_t len, int recv_interf) {
 				break;
 
 			case router_as_destination:
+				;
 				char *router_ip = get_interface_ip(recv_interf);
 				char r_ip_in_bytes[4];
 
